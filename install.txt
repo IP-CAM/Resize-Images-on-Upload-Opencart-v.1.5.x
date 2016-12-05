@@ -1,0 +1,32 @@
+Resize Images on Upload + Plus v1.2.0 for OpenCart
+
+Author: Derek McKee - Garuda Crafts Web Development - derek@garudacrafts.com
+Copyright: Copyright (c) 2013-2014, Derek McKee
+
+Requirements:
+- OpenCart (v1.5.0.x - v1.5.6.x)
+- vQmod (http://code.google.com/p/vqmod/)
+
+ALWAYS BACKUP your website (files and database) before making any changes!
+
+Installation Instructions:
+1. Upload all files in "upload" folder to your store's site root (no files overwritten)
+2. Enable permissions on module "module/resizeimageupload" at Admin->System->Users->User Groups->edit Permissions
+3. Install and cofigure module settings at Admin->Extensions->Modules->Resize Images on Upload->Install, then ->Edit
+4. Set PHP upload_max_filesize and post_max_size to large enough values for your requirements
+
+!IMPORTANT: OpenCart v1.5.0.x-v1.5.1.x users: uncomment lines 10-17 of /upload/vqmod/xml/resize_images_on_upload.xml vqmod file
+!IMPORTANT: Resize Images on Upload will affect ALL image uploaded in the Admin dashboard.  Enable/Disable as necessary.
+
+Upgrade Instructions:
+1. Upload all files in "upload" folder to your store's site root and allow overwrites
+2. Review and configure module settings at Admin->Extensions->Modules->Resize Images on Upload->Edit
+2. Remove the file "resize_images_on_upload.xml" (old) and keep the file "vqmod_resize_images_on_upload.xml" (new) in /vqmod/xml directory
+
+Uninstall Instructions:
+1.  Uninstall module at Admin->Extensions->Modules->Resize Images on Upload->Uninstall
+2.  Remove vQmod file (IMPORTANT!) and all other Resize Images on Upload files uploaded during installation (optional)
+
+---
+
+http://www.opencart.com/index.php?route=extension/extension/info&extension_id=11497

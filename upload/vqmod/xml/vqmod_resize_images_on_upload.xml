@@ -1,0 +1,535 @@
+<modification>
+	<id>Resize Images on Upload + PLUS for OpenCart</id>
+	<version>1.1.1</version>
+	<vqmver>2.1.7</vqmver>
+	<author>garudacrafts</author>
+	<notes>Automatically resizes images uploaded by Admin. Supports multi-upload extensions. Sets restrictions on image size and dimensions.</notes>
+
+	<file name="admin/controller/common/filemanager.php">
+		<!-- UNCOMMENT for OpenCart v1.5.0-v1.5.1.x
+		<operation>
+			<search position="after"><![CDATA[
+			if (isset($this->request->files['image'])
+			]]></search>
+			<add><![CDATA[
+			$filename = basename(html_entity_decode($this->request->files['image']['name'], ENT_QUOTES, 'UTF-8'));
+			]]></add>
+		</operation>
+		-->
+		<operation>
+			<search position="before"><![CDATA[
+			function upload() {
+			]]></search>
+			<add><![CDATA[
+			public function resizeimageupload() {
+				$this->load->language('common/filemanager');
+		
+				$json = array();
+		
+				if (!$this->user->hasPermission('modify', 'common/filemanager')) {				
+					$json['error'][] = $this->language->get('error_permission'); 					
+				} elseif (isset($this->request->post['directory'])) {								
+					$directory = rtrim(DIR_IMAGE . 'data/' . str_replace('../', '', $this->request->post['directory']), '/');
+						
+					if (!is_dir($directory)) {
+						$json['error'][] = $this->language->get('error_directory');
+					}
+				
+					if (isset($this->request->files['image']) && $this->request->files['image']['tmp_name']) {						
+						$allowed = array();
+
+						$resizeimageupload_image_types = $this->config->get('resizeimageupload_image_types');
+
+						foreach ($resizeimageupload_image_types as $resizeimageupload_image_type) {
+							switch ($resizeimageupload_image_type)
+							{
+							case ".jpg":
+							  $allowed[] = 'image/jpeg';
+							  break;
+							case ".jpeg":
+							  $allowed[] = 'image/pjpeg';
+							  break;
+							case ".gif":
+							  $allowed[] = 'image/gif';
+							  break;
+							case ".png":
+							  $allowed[] = 'image/png';
+							  $allowed[] = 'image/x-png';
+							  break;
+							case ".flv":
+							  $allowed[] = 'application/x-shockwave-flash';
+							  break;
+							}
+						}
+
+						foreach ($resizeimageupload_image_types as $resizeimageupload_image_type) {
+							$allowed_ext[] = $resizeimageupload_image_type;
+						}
+						
+						// multi upload support for Multiply Upload Image Files [VQMOD] extension (http://www.opencart.com/index.php?route=extension/extension/info&extension_id=8221)
+						if ($this->config->get('resizeimageupload_multiupload') == 1) {
+							 for ($i = 0; $i < count($this->request->files['image']['name']); $i++) {
+								$json['error'][$i] = array();
+								$json['success'][$i] = '';
+								
+								$filename = basename(html_entity_decode($this->request->files['image']['name'][$i], ENT_QUOTES, 'UTF-8'));
+								
+								if (!in_array($this->request->files['image']['type'][$i], $allowed) || !in_array(strtolower(strrchr($filename, '.')), $allowed_ext) || !getimagesize($this->request->files['image']['tmp_name'][$i])) {
+									$json['error'][$i][] = sprintf($this->language->get('error_file_type_resize'), $filename);
+								} else {
+									list($image_width, $image_height) = getimagesize($this->request->files['image']['tmp_name'][$i]);
+
+									if ($image_width < $this->config->get('resizeimageupload_image_dimensions_min_width') || $image_height < $this->config->get('resizeimageupload_image_dimensions_min_height')) {
+										$json['error'][$i][] = sprintf($this->language->get('error_file_dimensions_small'), $filename, $this->config->get('resizeimageupload_image_dimensions_min_width'), $this->config->get('resizeimageupload_image_dimensions_min_height'));
+									}
+								}
+								
+								if ($this->request->files['image']['size'][$i] > $this->config->get('resizeimageupload_image_upload_filesize_max') * 1024) {
+									$json['error'][$i][] = sprintf($this->language->get('error_file_size_resize'), $filename, $this->config->get('resizeimageupload_image_upload_filesize_max'));
+								}
+						
+								if ((strlen($filename) < $this->config->get('resizeimageupload_image_filename_min')) || (strlen($filename) > $this->config->get('resizeimageupload_image_filename_max'))) {
+									$json['error'][$i][] = sprintf($this->language->get('error_filename_resize'), $filename, $this->config->get('resizeimageupload_image_filename_min'), $this->config->get('resizeimageupload_image_filename_max'));
+								}
+
+								if ($this->request->files['image']['error'][$i] != UPLOAD_ERR_OK) {
+									$json['error'][$i][] = 'error_upload_' . $this->request->files['image']['error'][$i];
+								}
+								
+								if (empty($json['error'][$i])) {
+									if (@move_uploaded_file($this->request->files['image']['tmp_name'][$i], $directory . '/' . $filename)) {
+										if ($this->config->get('resizeimageupload_image_dimensions_ratio')) {
+											if ($this->config->get('resizeimageupload_image_dimensions_keep') == 'width') {		
+												if ($image_width > $this->config->get('resizeimageupload_image_dimensions_resize_width')) {
+													$this->load->model('tool/image');
+													$test_image = $this->model_tool_image->resizeimageupload($directory . '/' . $filename, $this->config->get('resizeimageupload_image_dimensions_resize_width'), $this->config->get('resizeimageupload_image_dimensions_resize_width') * $image_height/$image_width);
+													$json['success'][$i] = sprintf($this->language->get('success_file_dimensions_large'), $filename, $this->config->get('resizeimageupload_image_dimensions_resize_width'), number_format($this->config->get('resizeimageupload_image_dimensions_resize_width') * $image_height/$image_width, 0));
+												} else {
+													$json['success'][$i] = sprintf($this->language->get('text_uploaded_resize'), $filename);
+												}
+											} elseif ($this->config->get('resizeimageupload_image_dimensions_keep') == 'height') {		
+												if ($image_height > $this->config->get('resizeimageupload_image_dimensions_resize_height')) {
+													$this->load->model('tool/image');
+													$test_image = $this->model_tool_image->resizeimageupload($directory . '/' . $filename, $this->config->get('resizeimageupload_image_dimensions_resize_height') * $image_width/$image_height, $this->config->get('resizeimageupload_image_dimensions_resize_height'));							
+													$json['success'][$i] = sprintf($this->language->get('success_file_dimensions_large'), $filename, number_format($this->config->get('resizeimageupload_image_dimensions_resize_height') * $image_width/$image_height, 0), $this->config->get('resizeimageupload_image_dimensions_resize_height'));
+												} else {
+													$json['success'][$i] = sprintf($this->language->get('text_uploaded_resize'), $filename);
+												}
+											} else {
+												$json['error'][$i][] = sprintf($this->language->get('error_uploaded_resize'), $filename);
+											}
+										} elseif ($image_width > $this->config->get('resizeimageupload_image_dimensions_resize_width') || $image_height > $this->config->get('resizeimageupload_image_dimensions_resize_height')) {
+											$this->load->model('tool/image');
+											$test_image = $this->model_tool_image->resizeimageupload($directory . '/' . $filename, $this->config->get('resizeimageupload_image_dimensions_resize_width'), $this->config->get('resizeimageupload_image_dimensions_resize_height'));							
+											$json['success'][$i] = sprintf($this->language->get('success_file_dimensions_large'), $filename, $this->config->get('resizeimageupload_image_dimensions_resize_width'), $this->config->get('resizeimageupload_image_dimensions_resize_height'));
+										} else {
+											$json['success'][$i] = sprintf($this->language->get('text_uploaded_resize'), $filename);
+										}
+									} else {
+										$json['error'][$i][] = sprintf($this->language->get('error_uploaded_resize'), $filename);
+									}
+								}
+							}							
+						} else {
+							$filename = basename(html_entity_decode($this->request->files['image']['name'], ENT_QUOTES, 'UTF-8'));	
+							
+							if (!in_array($this->request->files['image']['type'], $allowed) || !in_array(strtolower(strrchr($filename, '.')), $allowed_ext) || !getimagesize($this->request->files['image']['tmp_name'])) {
+								$json['error'][] = sprintf($this->language->get('error_file_type_resize'), $filename);
+							} else {
+								list($image_width, $image_height) = getimagesize($this->request->files['image']['tmp_name']);
+
+								if ($image_width < $this->config->get('resizeimageupload_image_dimensions_min_width') || $image_height < $this->config->get('resizeimageupload_image_dimensions_min_height')) {
+									$json['error'][] = sprintf($this->language->get('error_file_dimensions_small'), $filename, $this->config->get('resizeimageupload_image_dimensions_min_width'), $this->config->get('resizeimageupload_image_dimensions_min_height'));
+								}
+							}
+							
+							if ($this->request->files['image']['size'] > $this->config->get('resizeimageupload_image_upload_filesize_max') * 1024) {
+								$json['error'][] = sprintf($this->language->get('error_file_size_resize'), $filename, $this->config->get('resizeimageupload_image_upload_filesize_max'));
+							}
+					
+							if ((strlen($filename) < $this->config->get('resizeimageupload_image_filename_min')) || (strlen($filename) > $this->config->get('resizeimageupload_image_filename_max'))) {
+								$json['error'][] = sprintf($this->language->get('error_filename_resize'), $filename, $this->config->get('resizeimageupload_image_filename_min'), $this->config->get('resizeimageupload_image_filename_max'));
+							}
+
+							if ($this->request->files['image']['error'] != UPLOAD_ERR_OK) {
+								$json['error'][] = 'error_upload_' . $this->request->files['image']['error'];
+							}
+							
+							if (!isset($json['error'])) {
+								if (@move_uploaded_file($this->request->files['image']['tmp_name'], $directory . '/' . $filename)) {
+									if ($this->config->get('resizeimageupload_image_dimensions_ratio')) {
+										if ($this->config->get('resizeimageupload_image_dimensions_keep') == 'width') {		
+											if ($image_width > $this->config->get('resizeimageupload_image_dimensions_resize_width')) {
+												$this->load->model('tool/image');
+												$test_image = $this->model_tool_image->resizeimageupload($directory . '/' . $filename, $this->config->get('resizeimageupload_image_dimensions_resize_width'), $this->config->get('resizeimageupload_image_dimensions_resize_width') * $image_height/$image_width);
+												$json['success'] = sprintf($this->language->get('success_file_dimensions_large'), $filename, $this->config->get('resizeimageupload_image_dimensions_resize_width'), number_format($this->config->get('resizeimageupload_image_dimensions_resize_width') * $image_height/$image_width, 0));
+											} else {
+												$json['success'] = sprintf($this->language->get('text_uploaded_resize'), $filename);
+											}
+										} elseif ($this->config->get('resizeimageupload_image_dimensions_keep') == 'height') {		
+											if ($image_height > $this->config->get('resizeimageupload_image_dimensions_resize_height')) {
+												$this->load->model('tool/image');
+												$test_image = $this->model_tool_image->resizeimageupload($directory . '/' . $filename, $this->config->get('resizeimageupload_image_dimensions_resize_height') * $image_width/$image_height, $this->config->get('resizeimageupload_image_dimensions_resize_height'));							
+												$json['success'] = sprintf($this->language->get('success_file_dimensions_large'), $filename, number_format($this->config->get('resizeimageupload_image_dimensions_resize_height') * $image_width/$image_height, 0), $this->config->get('resizeimageupload_image_dimensions_resize_height'));
+											} else {
+												$json['success'] = sprintf($this->language->get('text_uploaded_resize'), $filename);
+											}
+										} else {
+											$json['error'][] = sprintf($this->language->get('error_uploaded_resize'), $filename);
+										}
+									} elseif ($image_width > $this->config->get('resizeimageupload_image_dimensions_resize_width') || $image_height > $this->config->get('resizeimageupload_image_dimensions_resize_height')) {
+										$this->load->model('tool/image');
+										$test_image = $this->model_tool_image->resizeimageupload($directory . '/' . $filename, $this->config->get('resizeimageupload_image_dimensions_resize_width'), $this->config->get('resizeimageupload_image_dimensions_resize_height'));							
+										$json['success'] = sprintf($this->language->get('success_file_dimensions_large'), $filename, $this->config->get('resizeimageupload_image_dimensions_resize_width'), $this->config->get('resizeimageupload_image_dimensions_resize_height'));
+									} else {
+										$json['success'] = sprintf($this->language->get('text_uploaded_resize'), $filename);
+									}
+								} else {
+									$json['error'][] = sprintf($this->language->get('error_uploaded_resize'), $filename);
+								}
+							
+							}
+						}
+					} else {					
+						$json['error'][] = $this->language->get('error_file');
+					}
+				} else {
+					$json['error'][] = $this->language->get('error_directory');
+				}
+		
+				$this->response->setOutput(json_encode($json));
+			}
+			]]></add>
+		</operation>
+		<operation>
+			<search position="replace"><![CDATA[
+			$json['error'] = $this->language->get('error_filename');
+			]]></search>
+			<add><![CDATA[
+			$json['error'] = sprintf($this->language->get('error_filename'), '3', '255');
+			]]></add>
+		</operation>
+		<operation>
+			<search position="replace"><![CDATA[
+			$json['error'] = $this->language->get('error_file_size');
+			]]></search>
+			<add><![CDATA[
+			$json['error'] = sprintf($this->language->get('error_file_size'), '300');
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/language/english/common/filemanager.php">
+		<operation>
+			<search position="bottom" offset="2"></search>
+			<add><![CDATA[
+			$_['text_uploaded_resize']    = 'Image \'%s\' has been uploaded';
+			$_['error_filename_resize']   = 'Filename \'%s\' must be between %s and %s characters long';
+			$_['error_file_size_resize']  = 'Image \'%s\' is too big, please keep &le; %s kB';
+			$_['error_file_type_resize']  = 'Incorrect file type for image \'%s\'';
+			$_['error_uploaded_resize']   = 'Image \'%s\' could not be uploaded for an unknown reason';
+			$_['error_file_dimensions_small']  = 'Image \'%s\' is too small! Min width %s px and min height %s px required';
+			$_['success_file_dimensions_large']  = 'Image \'%s\' resized to %s px width and %s px height';
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/view/template/common/filemanager.tpl">
+		<operation>
+			<search position="replace"><![CDATA[
+			action: 'index.php?route=common/filemanager/upload&token=<?php echo $token; ?>',
+			]]></search>
+			<add><![CDATA[
+			<?php if ($this->config->get('resizeimageupload_status')) { ?>
+				action: 'index.php?route=common/filemanager/resizeimageupload&token=<?php echo $token; ?>',
+			<?php } else { ?>
+				action: 'index.php?route=common/filemanager/upload&token=<?php echo $token; ?>',
+			<?php } ?>
+			]]></add>
+		</operation>
+		<!-- disable auto-add to Image Tab for Multiply Upload Image Files [VQMOD] extension (http://www.opencart.com/index.php?route=extension/extension/info&extension_id=8221) -->
+		<operation error="skip">
+			<search position="replace" offset="15"><![CDATA[for (var i=0; i<json.image.length; i++ ) {]]></search>
+			<add><![CDATA[]]></add>
+		</operation>
+		<operation>
+			<search position="before"><![CDATA[
+			onComplete: function(file, json) {
+			]]></search>
+			<add><![CDATA[
+			<?php if ($this->config->get('resizeimageupload_status')) { ?>
+			onComplete: function(file, json) {
+				if (json.success) {
+					var tree = $.tree.focused();
+						
+					tree.select_branch(tree.selected);
+					
+					<?php if ($this->config->get('resizeimageupload_multiupload') == 1) { ?>
+					alert_msg = "";
+					j = 1;			
+					for (i = 0; i < json.success.length; i++) {
+						if (json.success[i].length) {
+							alert_msg += "#" + j + " - ";
+							alert_msg += json.success[i];
+							alert_msg += "\n";
+							j++;
+						}
+					}
+					if (alert_msg.length) {
+						alert_msg = "Success!\n\r".concat(alert_msg);
+						alert(alert_msg);
+					}		
+					<?php } else { ?>
+					alert(json.success);
+					<?php } ?>
+				}
+				
+				if (json.error) {
+					<?php if ($this->config->get('resizeimageupload_multiupload') == 1) { ?>
+					alert_msg = "";
+					j = 1;			
+					for (i = 0; i < json.error.length; i++) {
+						if (json.error[i].length) {
+							alert_msg += "#" + j + " - ";
+							alert_msg += json.error[i].join(", \n");
+							alert_msg += "\n\r";
+							j++;
+						}
+					}
+					if (alert_msg.length) {
+						alert_msg = "Warning!\n\r".concat(alert_msg);
+						alert(alert_msg);
+					}
+					<?php } else { ?>
+					alert(json.error.join(", \n"));
+					<?php } ?>
+				}
+				
+				$('.loading').remove();	
+			}
+			<?php } else { ?>
+			]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="2" offset="1"><![CDATA[
+			$('.loading').remove();
+			]]></search>
+			<add><![CDATA[
+			<?php } ?>
+			]]></add>
+		</operation>
+		<!-- plupload mods for ImageManager+ extension (http://www.opencart.com/index.php?route=extension/extension/info&extension_id=16447) -->
+		<operation error="skip">
+			<search position="replace"><![CDATA[
+			resize : {width : 800, height : 600, quality : 90},
+			]]></search>
+			<add><![CDATA[
+			resize : {width : <?php echo ($this->config->get('resizeimageupload_status') ? $this->config->get('resizeimageupload_image_dimensions_resize_width') : '800'); ?>, height : <?php echo ($this->config->get('resizeimageupload_status') ? $this->config->get('resizeimageupload_image_dimensions_resize_height') : '600'); ?>, quality : <?php echo ($this->config->get('resizeimageupload_status') ? '100' : '90'); ?>},
+			]]></add>
+		</operation>
+		<operation error="skip">
+			<search position="replace"><![CDATA[
+			max_file_size : '5mb',
+			]]></search>
+			<add><![CDATA[
+			max_file_size : '<?php echo ($this->config->get('resizeimageupload_status') ? ($this->config->get('resizeimageupload_image_upload_filesize_max') / 1024) : '5'); ?>mb',
+			]]></add>
+		</operation>
+		<operation error="skip">
+			<search position="replace"><![CDATA[
+			{title : "Allowed files", extensions : "jpg,gif,png,pdf,zip,swf"}
+			]]></search>
+			<add><![CDATA[
+			{title : "Allowed files", extensions : "<?php echo ($this->config->get('resizeimageupload_status') ? str_replace('.', '', implode(',', $this->config->get('resizeimageupload_image_types'))) : 'jpg,gif,png,pdf,zip,swf'); ?>"}
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/model/tool/image.php">
+		<operation>
+			<search position="bottom" offset="2"><![CDATA[
+			]]></search>
+			<add><![CDATA[
+			public function resizeimageupload($filename, $width, $height) {
+				if (!file_exists($filename) || !is_file($filename)) {
+					return;
+				} 
+		
+				$image = new Image($filename);
+				$image->resize($width, $height);
+				$image->save($filename);
+		
+				if (isset($this->request->server['HTTPS']) && (($this->request->server['HTTPS'] == 'on') || ($this->request->server['HTTPS'] == '1'))) {
+					if (defined('HTTPS_IMAGE')) {
+						return HTTPS_IMAGE . $filename;
+					} else {
+						return HTTPS_SERVER . 'image/' . $filename;
+					}
+				} else {
+					if (defined('HTTP_IMAGE')) {
+						return HTTP_IMAGE . $filename;
+					} else {
+						return HTTP_SERVER . 'image/' . $filename;
+					}
+				}	
+			}
+			]]></add>
+		</operation>
+	</file>
+	
+	<!-- elFinder mods for Power Image Manager extension -->
+
+	<file name="admin/controller/common/filemanager.php">
+		<operation error="skip">
+			<search position="replace"><![CDATA[
+			include_once DIR_SYSTEM.'library/filemanager/elFinderVolumeDriver.class.php';
+			]]></search>
+			<add><![CDATA[		
+			$this->load->library('filemanager/elFinderVolumeDriver.class');
+			]]></add>
+		</operation>
+		<operation error="skip">
+			<search position="replace"><![CDATA[
+			'uploadMaxSize'  => ''.$this->config->get('pim_uploadMaxSize').'M',
+			]]></search>
+			<add><![CDATA[		
+					'uploadMaxSize'  => '' . ($this->config->get('resizeimageupload_status') ? ($this->config->get('resizeimageupload_image_upload_filesize_max'). 'k') : $this->config->get('pim_uploadMaxSize') . 'm'),
+				)
+        	),
+        	'bind' => array(
+				'upload.presave' => array(
+					'Plugin.AutoResize.onUpLoadPreSave'
+				)
+			),
+			'plugin' => array(
+				'AutoResize' => array(
+					'enable'		=> true,
+					'maxWidth'		=> ($this->config->get('resizeimageupload_status') ? $this->config->get('resizeimageupload_image_dimensions_resize_width') : 1200),
+					'maxHeight'		=> ($this->config->get('resizeimageupload_status') ? $this->config->get('resizeimageupload_image_dimensions_resize_height') : 1200),
+					'quality'		=> ($this->config->get('resizeimageupload_status') ? 100 : 95),
+					'targetType'	=> IMG_GIF|IMG_JPG|IMG_PNG|IMG_WBMP
+			]]></add>
+		</operation>
+	</file>
+
+	<file name="system/library/filemanager/elFinderVolumeDriver.class.php" error="skip">
+		<operation>
+			<search position="replace" offset="2"><![CDATA[
+			if ($this->uploadMaxSize > 0 && filesize($tmpname) > $this->uploadMaxSize) {
+			]]></search>
+			<add><![CDATA[
+			$fileSize = filesize($tmpname);
+			$maxUploadFileSize = $this->uploadMaxSize;
+			
+			if ($maxUploadFileSize > 0 && $fileSize > $maxUploadFileSize) {
+				return $this->setError(sprintf('File size %s MB exceeds maximum allowed size: %s MB!', number_format($fileSize/1048576, 2), number_format($maxUploadFileSize/1048576, 2)));
+			}
+			]]></add>
+		</operation>
+		<!-- uncomment below operation node to hard-code min width, min height, min file length, and max file length requirements for Power Manager image upload -->
+		<!--
+		<operation>
+			<search position="after" offset="2"><![CDATA[
+			if ($this->uploadMaxSize > 0 && filesize($tmpname) > $this->uploadMaxSize) {
+			]]></search>
+			<add><![CDATA[
+			list($image_width, $image_height) = getimagesize($tmpname);
+			$minWidth = 600;
+			$minHeight = 500;
+			$minFileLength = 3;
+			$maxFileLength = 25;
+
+			if ($image_width < $minWidth || $image_height < $minHeight) {
+				return $this->setError(sprintf('Warning: image width and/or height is too small! Min width %1$d px and min height %2$d px required!', $minWidth, $minHeight));
+			}
+	
+			if ((strlen($name) < $minFileLength) || (strlen($name) > $maxFileLength)) {
+				return $this->setError(elFinder::ERROR_INVALID_NAME . sprintf(' Warning: Filename must be between %1$d and %2$d characters long!', $minFileLength, $maxFileLength));
+			}
+			]]></add>
+		</operation>
+		-->
+	</file>
+	
+	<!-- ADD IMAGE MANAGER TO ADMIN NAV MENU -->
+	
+	<file name="admin/controller/common/header.php">
+		<operation>
+			<search position="after"><![CDATA[
+			$this->data['text_customer']
+			]]></search>
+			<add><![CDATA[
+			$this->data['text_image_manager'] = $this->language->get('text_image_manager');
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/language/english/common/header.php">
+		<operation>
+			<search position="bottom" offset="2"></search>
+			<add><![CDATA[
+			$_['text_image_manager'] = 'Images';
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/view/template/common/header.tpl">
+		<operation>
+			<search position="after"><![CDATA[
+			<li><a href="<?php echo $product; ?>"><?php echo $text_product; ?></a></li>
+			]]></search>
+			<add><![CDATA[
+			<?php if ($this->config->get('resizeimageupload_image_manager_link')) { ?>
+			<li><a onclick="image_manager();"><?php echo $text_image_manager; ?></a></li>
+			<?php } ?>
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/controller/common/footer.php">
+		<operation>
+			<search position="after"><![CDATA[
+			('common/footer')
+			]]></search>
+			<add><![CDATA[
+			$this->data['token'] = (isset($this->session->data['token']) ? $this->session->data['token'] : '');
+			$this->data['text_image_manager'] = $this->language->get('text_image_manager');
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/language/english/common/footer.php">
+		<operation>
+			<search position="bottom" offset="2"></search>
+			<add><![CDATA[
+			$_['text_image_manager'] = 'Image Manager';
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/view/template/common/footer.tpl">	
+		<operation>
+			<search position="bottom" offset="2"></search>
+			<add><![CDATA[
+			<?php if (isset($token) && $this->config->get('resizeimageupload_image_manager_link')) { ?>
+			<script type="text/javascript"><!--
+			function image_manager() {
+				$('#dialog').remove();
+				$('#container').prepend('<div id="dialog" style="padding: 3px 0px 0px 0px;"><iframe src="index.php?route=common/filemanager&token=<?php echo $token; ?>" style="padding:0; margin: 0; display: block; width: 100%; height: 100%;" frameborder="no" scrolling="auto"></iframe></div>');
+				$('#dialog').dialog({
+					title: '<?php echo $text_image_manager; ?>',
+					close: function (text) {},	
+					bgiframe: false,
+					width: <?php echo ($this->config->get('pim_status') && $this->config->get('pim_width') ? $this->config->get('pim_width') : 1000); ?>,
+					height: <?php echo ($this->config->get('pim_status') && $this->config->get('pim_height') ? $this->config->get('pim_height') : 600); ?>,
+					resizable: true,
+					modal: true
+				});
+			};
+			//--></script>
+			<?php } ?>
+			]]></add>
+		</operation>
+	</file>
+	
+</modification>
